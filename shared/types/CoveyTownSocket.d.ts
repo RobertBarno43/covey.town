@@ -17,7 +17,7 @@ export type TownJoinResponse = {
   interactables: TypedInteractable[];
 }
 
-export type InteractableType = 'ConversationArea' | 'ViewingArea' | 'TicTacToeArea' | 'ConnectFourArea';
+export type InteractableType = 'ConversationArea' | 'ViewingArea' | 'TicTacToeArea' | 'ConnectFourArea' | 'QuantumTicTacToeArea';
 export interface Interactable {
   type: InteractableType;
   id: InteractableID;
@@ -121,6 +121,33 @@ export interface TicTacToeGameState extends WinnableGameState {
 }
 
 /**
+ * Type for a move in Quantum TicTacToe
+ */
+export interface QuantumTicTacToeMove extends TicTacToeMove {
+  board: 'A' | 'B' | 'C';
+}
+
+/**
+ * Type for the state of a Quantum TicTacToe game.
+ * The state of the game is represented similarly to the regular TicTacToe
+ * game, but using the our Quantum move structure. We also store
+ * the xScore and oScore so that it's not necessary to rerun old
+ * games to determine their score.
+ */
+export interface QuantumTicTacToeGameState extends WinnableGameState {
+  moves: ReadonlyArray<QuantumTicTacToeMove>;
+  x?: PlayerID;
+  o?: PlayerID;
+  xScore: number;
+  oScore: number;
+  publiclyVisible: {
+    A: boolean[][];
+    B: boolean[][];
+    C: boolean[][];
+  };
+}
+
+/**
  * Type for the state of a ConnectFour game.
  * The state of the game is represented as a list of moves, and the playerIDs of the players (red and yellow)
  */
@@ -216,7 +243,7 @@ interface InteractableCommandBase {
   type: string;
 }
 
-export type InteractableCommand =  ViewingAreaUpdateCommand | JoinGameCommand | GameMoveCommand<TicTacToeMove> | GameMoveCommand<ConnectFourMove> | StartGameCommand | LeaveGameCommand;
+export type InteractableCommand =  ViewingAreaUpdateCommand | JoinGameCommand | GameMoveCommand<TicTacToeMove> | GameMoveCommand<ConnectFourMove> | GameMoveCommand<QuantumTicTacToeMove> | StartGameCommand | LeaveGameCommand;
 export interface ViewingAreaUpdateCommand  {
   type: 'ViewingAreaUpdate';
   update: ViewingArea;
