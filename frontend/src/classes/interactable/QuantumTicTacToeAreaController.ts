@@ -48,6 +48,9 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
     ],
   };
 
+  // Track collision count to properly calculate whose turn it is
+  protected _collisionCount = 0;
+
   /**
    * Returns the current state of all three boards.
    *
@@ -97,10 +100,10 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   }
 
   /**
-   * Returns the number of moves that have been made in the game
+   * Returns the number of moves that have been made in the game (including collision attempts)
    */
   get moveCount(): number {
-    return this._model.game?.state.moves.length || 0;
+    return (this._model.game?.state.moves.length || 0) + this._collisionCount;
   }
 
   /**
@@ -117,6 +120,7 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   /**
    * Returns the player whose turn it is, if the game is in progress
    * Returns undefined if the game is not in progress
+   * Now properly accounts for collisions when determining turns
    */
   get whoseTurn(): PlayerController | undefined {
     const x = this.x;
@@ -124,9 +128,13 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
     if (!x || !o || this.status !== 'IN_PROGRESS') {
       return undefined;
     }
-    if (this.moveCount % 2 === 0) {
+
+    // Use the total move count (including collisions) to determine whose turn it is
+    const totalMoveAttempts = this.moveCount;
+
+    if (totalMoveAttempts % 2 === 0) {
       return x;
-    } else if (this.moveCount % 2 === 1) {
+    } else if (totalMoveAttempts % 2 === 1) {
       return o;
     } else {
       throw new Error('Invalid move count');
@@ -178,6 +186,41 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   }
 
   /**
+   * Detects and counts collisions by comparing publicly visible squares
+   * between old and new game states
+   */
+  private _detectCollisions(
+    oldPubliclyVisible: { A: boolean[][]; B: boolean[][]; C: boolean[][] },
+    newPubliclyVisible: { A: boolean[][]; B: boolean[][]; C: boolean[][] },
+    newMoves: ReadonlyArray<QuantumTicTacToeMove>,
+  ): number {
+    let collisionsDetected = 0;
+
+    const boards: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
+    for (const board of boards) {
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          // Check if this square became publicly visible
+          if (!oldPubliclyVisible[board][row][col] && newPubliclyVisible[board][row][col]) {
+            // Check if there's a corresponding move in the moves array
+            const hasMatchingMove = newMoves.some(
+              move => move.board === board && move.row === row && move.col === col,
+            );
+
+            // If the square became visible but there's no new move recorded,
+            // it must be due to a collision
+            if (!hasMatchingMove) {
+              collisionsDetected++;
+            }
+          }
+        }
+      }
+    }
+
+    return collisionsDetected;
+  }
+
+  /**
    * Updates the internal state of this QuantumTicTacToeAreaController to match the new model.
    *
    * Calls super._updateFrom, which updates the occupants of this game area and
@@ -188,12 +231,64 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
    *
    * If the turn has changed, emits a 'turnChanged' event with true if it is our turn, and false otherwise.
    * If the turn has not changed, does not emit the event.
+   *
+   * Now properly tracks collisions to ensure turn changes work correctly.
    */
   protected _updateFrom(newModel: GameArea<QuantumTicTacToeGameState>): void {
     const wasOurTurn = this.whoseTurn?.id === this._townController.ourPlayer.id;
+
+    // Store old state for collision detection
+    const oldPubliclyVisible = this._model.game?.state.publiclyVisible;
+    const oldMoveCount = this._model.game?.state.moves.length || 0;
+
     super._updateFrom(newModel);
     const newState = newModel.game;
+
     if (newState) {
+      // Detect collisions if we have previous state
+      if (oldPubliclyVisible) {
+        const newMoveCount = newState.state.moves.length;
+        const moveCountDifference = newMoveCount - oldMoveCount;
+
+        // Check for new publicly visible squares that don't have corresponding moves
+        const newCollisions = this._detectCollisions(
+          oldPubliclyVisible,
+          newState.state.publiclyVisible,
+          newState.state.moves,
+        );
+
+        // If we detected new collisions, update our collision count
+        if (newCollisions > 0) {
+          this._collisionCount += newCollisions;
+        }
+
+        // If moves increased but by less than we expected, there might have been collisions
+        // This is a fallback detection method
+        if (moveCountDifference === 0 && newCollisions === 0) {
+          // Check if any new squares became publicly visible without new moves
+          const boards: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
+          let newlyVisibleSquares = 0;
+
+          for (const board of boards) {
+            for (let row = 0; row < 3; row++) {
+              for (let col = 0; col < 3; col++) {
+                if (
+                  !oldPubliclyVisible[board][row][col] &&
+                  newState.state.publiclyVisible[board][row][col]
+                ) {
+                  newlyVisibleSquares++;
+                }
+              }
+            }
+          }
+
+          if (newlyVisibleSquares > 0) {
+            this._collisionCount += newlyVisibleSquares;
+          }
+        }
+      }
+
+      // Update the board display
       const newBoards: { A: TicTacToeCell[][]; B: TicTacToeCell[][]; C: TicTacToeCell[][] } = {
         A: [
           [undefined, undefined, undefined],
@@ -214,7 +309,7 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
       const ourPlayerID = this._townController.ourPlayer.id;
 
-      // First, apply all moves that we can see
+      // First, apply all moves that we can see (our own moves)
       newState.state.moves.forEach(move => {
         const isOurMove =
           (move.gamePiece === 'X' && newState.state.x === ourPlayerID) ||
@@ -225,7 +320,7 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
         }
       });
 
-      // Then, handle publicly visible squares
+      // Then, handle publicly visible squares (shows opponent moves and collision results)
       const boards: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
       boards.forEach(board => {
         for (let row = 0; row < 3; row++) {
@@ -255,6 +350,62 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
     if (wasOurTurn !== isOurTurn) {
       this.emit('turnChanged', isOurTurn);
     }
+  }
+
+  /**
+   * Resets the collision count when a new game starts
+   */
+  /**
+   * Resets the game state when a new game starts.
+   */
+  protected _reset(): void {
+    // Reset collision count
+    this._collisionCount = 0;
+
+    // Reset boards to empty state
+    this._boards = {
+      A: [
+        [undefined, undefined, undefined],
+        [undefined, undefined, undefined],
+        [undefined, undefined, undefined],
+      ],
+      B: [
+        [undefined, undefined, undefined],
+        [undefined, undefined, undefined],
+        [undefined, undefined, undefined],
+      ],
+      C: [
+        [undefined, undefined, undefined],
+        [undefined, undefined, undefined],
+        [undefined, undefined, undefined],
+      ],
+    };
+
+    // Clear any leftover game state from the previous game
+    if (this._model.game) {
+      this._model.game.state.moves = [];
+      this._model.game.state.publiclyVisible = {
+        A: [
+          [false, false, false],
+          [false, false, false],
+          [false, false, false],
+        ],
+        B: [
+          [false, false, false],
+          [false, false, false],
+          [false, false, false],
+        ],
+        C: [
+          [false, false, false],
+          [false, false, false],
+          [false, false, false],
+        ],
+      };
+    }
+
+    // Emit events to notify listeners of the reset
+    this.emit('boardChanged', this._boards);
+    this.emit('turnChanged', this.isOurTurn);
   }
 
   /**
