@@ -13,23 +13,31 @@ import GameAreaController, {
   PLAYER_NOT_IN_GAME_ERROR,
 } from './GameAreaController';
 
+/** Represents a cell in a tic-tac-toe board: either 'X', 'O', or undefined for empty */
 export type TicTacToeCell = 'X' | 'O' | undefined;
+
+/** Event types specific to QuantumTicTacToe game area */
 export type QuantumTicTacToeEvents = GameEventTypes & {
+  /** Emitted when any of the three boards change */
   boardChanged: (board: {
     A: TicTacToeCell[][];
     B: TicTacToeCell[][];
     C: TicTacToeCell[][];
   }) => void;
+  /** Emitted when the turn changes */
   turnChanged: (isOurTurn: boolean) => void;
 };
 
 /**
- * This class is responsible for managing the state of the Quantum Tic Tac Toe game, and for sending commands to the server
+ * This class is responsible for managing the state of the Quantum Tic Tac Toe game,
+ * and for sending commands to the server. It handles the unique aspects of quantum
+ * tic-tac-toe including collision detection and managing three simultaneous boards.
  */
 export default class QuantumTicTacToeAreaController extends GameAreaController<
   QuantumTicTacToeGameState,
   QuantumTicTacToeEvents
 > {
+  /** The current state of all three game boards */
   protected _boards: { A: TicTacToeCell[][]; B: TicTacToeCell[][]; C: TicTacToeCell[][] } = {
     A: [
       [undefined, undefined, undefined],
@@ -48,16 +56,17 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
     ],
   };
 
-  // Track collision count to properly calculate whose turn it is
+  /** Track collision count to properly calculate whose turn it is */
   protected _collisionCount = 0;
 
   /**
    * Returns the current state of all three boards.
    *
    * Each board is a 3x3 array of TicTacToeCell, which is either 'X', 'O', or undefined.
+   * The 2-dimensional array is indexed by row and then column, so board[0][0] is the
+   * top-left cell, and board[2][2] is the bottom-right cell
    *
-   * The 2-dimensional array is indexed by row and then column, so board[0][0] is the top-left cell,
-   * and board[2][2] is the bottom-right cell
+   * @returns Object containing the three boards A, B, and C
    */
   get boards(): { A: TicTacToeCell[][]; B: TicTacToeCell[][]; C: TicTacToeCell[][] } {
     return this._boards;
@@ -65,6 +74,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
   /**
    * Returns the player with the 'X' game piece, if there is one, or undefined otherwise
+   *
+   * @returns The PlayerController for the X player, or undefined if no X player exists
    */
   get x(): PlayerController | undefined {
     const x = this._model.game?.state.x;
@@ -76,6 +87,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
   /**
    * Returns the player with the 'O' game piece, if there is one, or undefined otherwise
+   *
+   * @returns The PlayerController for the O player, or undefined if no O player exists
    */
   get o(): PlayerController | undefined {
     const o = this._model.game?.state.o;
@@ -86,14 +99,18 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   }
 
   /**
-   * Returns the current score for the X player
+   * Returns the current score for the X player (number of boards won)
+   *
+   * @returns The X player's score, or 0 if no game is in progress
    */
   get xScore(): number {
     return this._model.game?.state.xScore || 0;
   }
 
   /**
-   * Returns the current score for the O player
+   * Returns the current score for the O player (number of boards won)
+   *
+   * @returns The O player's score, or 0 if no game is in progress
    */
   get oScore(): number {
     return this._model.game?.state.oScore || 0;
@@ -101,6 +118,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
   /**
    * Returns the number of moves that have been made in the game (including collision attempts)
+   *
+   * @returns Total move count including both successful moves and collisions
    */
   get moveCount(): number {
     return (this._model.game?.state.moves.length || 0) + this._collisionCount;
@@ -108,6 +127,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
   /**
    * Returns the winner of the game, if there is one
+   *
+   * @returns The PlayerController for the winning player, or undefined if no winner yet
    */
   get winner(): PlayerController | undefined {
     const winner = this._model.game?.state.winner;
@@ -118,9 +139,11 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   }
 
   /**
-   * Returns the player whose turn it is, if the game is in progress
-   * Returns undefined if the game is not in progress
-   * Now properly accounts for collisions when determining turns
+   * Returns the player whose turn it is, if the game is in progress.
+   * Returns undefined if the game is not in progress.
+   * Properly accounts for collisions when determining turns.
+   *
+   * @returns The PlayerController for the player whose turn it is, or undefined
    */
   get whoseTurn(): PlayerController | undefined {
     const x = this.x;
@@ -141,12 +164,19 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
     }
   }
 
+  /**
+   * Returns true if it is currently our turn to make a move
+   *
+   * @returns true if it's the current player's turn, false otherwise
+   */
   get isOurTurn(): boolean {
     return this.whoseTurn?.id === this._townController.ourPlayer.id;
   }
 
   /**
    * Returns true if the current player is a player in this game
+   *
+   * @returns true if the current player is participating in the game
    */
   get isPlayer(): boolean {
     return this._model.game?.players.includes(this._townController.ourPlayer.id) || false;
@@ -155,7 +185,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   /**
    * Returns the game piece of the current player, if the current player is a player in this game
    *
-   * Throws an error PLAYER_NOT_IN_GAME_ERROR if the current player is not a player in this game
+   * @returns 'X' or 'O' representing the current player's game piece
+   * @throws Error if the current player is not a player in this game
    */
   get gamePiece(): 'X' | 'O' {
     if (this.x?.id === this._townController.ourPlayer.id) {
@@ -169,6 +200,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   /**
    * Returns the status of the game.
    * Defaults to 'WAITING_TO_START' if the game is not in progress
+   *
+   * @returns The current game status
    */
   get status(): GameStatus {
     const status = this._model.game?.state.status;
@@ -180,6 +213,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
   /**
    * Returns true if the game is in progress
+   *
+   * @returns true if the game status is 'IN_PROGRESS'
    */
   public isActive(): boolean {
     return this.status === 'IN_PROGRESS';
@@ -187,7 +222,13 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
 
   /**
    * Detects and counts collisions by comparing publicly visible squares
-   * between old and new game states
+   * between old and new game states. A collision occurs when a square becomes
+   * publicly visible but no new move was recorded for that position.
+   *
+   * @param oldPubliclyVisible The previous state of publicly visible squares
+   * @param newPubliclyVisible The new state of publicly visible squares
+   * @param newMoves The current array of moves
+   * @returns The number of collisions detected
    */
   private _detectCollisions(
     oldPubliclyVisible: { A: boolean[][]; B: boolean[][]; C: boolean[][] },
@@ -226,13 +267,15 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
    * Calls super._updateFrom, which updates the occupants of this game area and
    * other common properties (including this._model).
    *
-   * If any board has changed, emits a 'boardChanged' event with the new boards. If no boards have changed,
-   * does not emit the event.
+   * If any board has changed, emits a 'boardChanged' event with the new boards.
+   * If no boards have changed, does not emit the event.
    *
-   * If the turn has changed, emits a 'turnChanged' event with true if it is our turn, and false otherwise.
-   * If the turn has not changed, does not emit the event.
+   * If the turn has changed, emits a 'turnChanged' event with true if it is our turn,
+   * and false otherwise. If the turn has not changed, does not emit the event.
    *
-   * Now properly tracks collisions to ensure turn changes work correctly.
+   * Properly tracks collisions to ensure turn changes work correctly.
+   *
+   * @param newModel The updated game area model from the server
    */
   protected _updateFrom(newModel: GameArea<QuantumTicTacToeGameState>): void {
     const wasOurTurn = this.whoseTurn?.id === this._townController.ourPlayer.id;
@@ -262,10 +305,9 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
           this._collisionCount += newCollisions;
         }
 
-        // If moves increased but by less than we expected, there might have been collisions
-        // This is a fallback detection method
+        // Fallback collision detection method
+        // If moves didn't increase but squares became visible, there were collisions
         if (moveCountDifference === 0 && newCollisions === 0) {
-          // Check if any new squares became publicly visible without new moves
           const boards: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
           let newlyVisibleSquares = 0;
 
@@ -353,10 +395,8 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   }
 
   /**
-   * Resets the collision count when a new game starts
-   */
-  /**
    * Resets the game state when a new game starts.
+   * Clears collision count, resets boards to empty state, and emits appropriate events.
    */
   protected _reset(): void {
     // Reset collision count
@@ -411,27 +451,28 @@ export default class QuantumTicTacToeAreaController extends GameAreaController<
   /**
    * Sends a request to the server to make a move in the game
    *
-   * If the game is not in progress, throws an error NO_GAME_IN_PROGRESS_ERROR
-   *
    * @param board The board to make the move on ('A', 'B', or 'C')
-   * @param row Row of the move
-   * @param col Column of the move
+   * @param row Row of the move (0, 1, or 2)
+   * @param col Column of the move (0, 1, or 2)
+   * @throws Error if the game is not in progress
    */
   public async makeMove(
     board: 'A' | 'B' | 'C',
     row: TicTacToeGridPosition,
     col: TicTacToeGridPosition,
-  ) {
+  ): Promise<void> {
     const instanceID = this._instanceID;
     if (!instanceID || this._model.game?.state.status !== 'IN_PROGRESS') {
       throw new Error(NO_GAME_IN_PROGRESS_ERROR);
     }
+
     const move: QuantumTicTacToeMove = {
       gamePiece: this.gamePiece,
       board,
       row,
       col,
     };
+
     await this._townController.sendInteractableCommand(this.id, {
       type: 'GameMove',
       gameID: instanceID,
